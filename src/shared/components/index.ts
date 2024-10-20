@@ -1,3 +1,3 @@
-import HumeLogoLink from './hume-logo-link';
+import LogoLink from './logo-link';
 
-export { HumeLogoLink };
+export { LogoLink };

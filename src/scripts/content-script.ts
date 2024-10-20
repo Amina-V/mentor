@@ -1,19 +1,13 @@
 import { ACTIONS, ERRORS } from '../shared/constants';
-import { EmotionScore, MessageResponseBody } from '../shared/types';
 
 let ws: WebSocket;
-let video: HTMLVideoElement;
 
-let canvas: HTMLCanvasElement;
-let ctx: CanvasRenderingContext2D;
+// Variables for content extraction
+let contentInterval: number;
+const contentCaptureRate = 5000; // Capture content every 5 seconds (adjust as needed)
 
-let overlayCtx: CanvasRenderingContext2D;
-let overlay: HTMLCanvasElement;
-let removeOverlay = false;
-
-let latestFrame = 0; // used to ensure messages received from web socket are processed chronologically
-let frameCount = -1; // used to enable inference to be performed on every 60 frames instead of every frame
-const frameCaptureRate = 60; // rate of frames to perform inference on (every 60th frame)
+// Keep track of the latest content to avoid redundant processing
+let latestContent = '';
 
 chrome.runtime.onMessage.addListener((msg) => {
   const { action } = msg;
@@ -24,69 +18,27 @@ chrome.runtime.onMessage.addListener((msg) => {
     const { apiKey, streaming } = result;
     if (action === CONNECT) {
       const err: keyof typeof ERRORS = 'STREAMING_IN_PROGRESS';
-      streaming ? displayError(err) : captureVideoAndStream(apiKey);
+      streaming ? displayError(err) : startContentStreaming(apiKey);
     }
     if (action === DISCONNECT) {
-      removeOverlay = msg.removeOverlay;
       disconnect();
     }
   });
 });
 
 /**
- * Function which queries the DOM for the video element, instantiates a websocket connection, and then
- * captures the video element's frames using canvas.
- *
- * The captured frames are converted to `image/png` Blobs, base64 encoded, and then sent through the
- * websocket for inference.
- *
- * Every 60th frame is captured, and there is a mechanism in place to ensure responses are handled in
- * order (chronologically).
- *
- * When a response is received, top five expressions are extracted and sent to the popup to be visualized.
+ * Function to start streaming content from the page and sending it to the API.
  */
-function captureVideoAndStream(apiKey: string): void {
-  video = document.querySelector('video');
-  if (!video) {
-    const err: keyof typeof ERRORS = 'NO_VIDEO_FOUND';
-    return displayError(err);
-  }
-  if (video.paused || video.ended) video.play();
-
-  canvas = document.createElement('canvas');
-  ctx = canvas.getContext('2d');
-
-  if (overlay) overlay.remove();
-  createVideoOverlay();
-
+function startContentStreaming(apiKey: string): void {
   const wsURL = `wss://api.hume.ai/v0/stream/models?apikey=${apiKey}`;
   ws = connect(wsURL);
 
-  video.addEventListener('pause', disconnect);
-  video.addEventListener('ended', disconnect);
-
-  captureAndSendFrames();
+  // Begin capturing content from the page
+  captureAndSendContent();
 }
 
 /**
- * Function which creates the overlay canvas dom element, and appends it to the DOM, positioned over the
- * video element's container.
- */
-function createVideoOverlay(): void {
-  overlay = document.createElement('canvas');
-  overlayCtx = overlay.getContext('2d');
-
-  overlay.style['position'] = 'relative';
-  overlay.style['top'] = '0';
-  overlay.style['left'] = '0';
-
-  const container = video.parentElement;
-  container.appendChild(overlay);
-}
-
-/**
- * Function which creates instantiates a new WebSocket connection and defines the various
- * callback functions for each event (`open`, `message`, `close`, & `error`)
+ * Function which creates a new WebSocket connection and defines event handlers.
  */
 function connect(webSocketURL: string): WebSocket {
   const socket = new WebSocket(webSocketURL);
@@ -101,34 +53,26 @@ function connect(webSocketURL: string): WebSocket {
     });
   });
 
-  socket.addEventListener('message', (event) => {
-    const data: MessageResponseBody = JSON.parse(event.data);
-    const frame = Number(data.payload_id);
-    // guard clause ensuring messages are processed in order (chronologically)
-    if (frame < latestFrame) return;
-    // update the latestFrame for each processed message
-    latestFrame = frame;
-    // draw bounding box and extract top 5 expressions from message response body
-    drawBoundingBox(data);
-    const topFiveExpressions = extractTopFiveExpressions(data);
-    // update top five expressions in popup menu
-    chrome.runtime.sendMessage({
-      action: ACTIONS.TOP_FIVE_UPDATED,
-      topFiveExpressions,
-    });
-  });
+  // socket.addEventListener('message', (event) => {
+  //   const data: MessageResponseBody = JSON.parse(event.data);
+
+  //   // Extract top 5 expressions or results from the response
+  //   const topFiveExpressions = extractTopFiveExpressions(data);
+
+  //   // Update top five expressions in the popup menu
+  //   chrome.runtime.sendMessage({
+  //     action: ACTIONS.TOP_FIVE_UPDATED,
+  //     topFiveExpressions,
+  //   });
+  // });
 
   socket.addEventListener('close', (event) => {
     chrome.storage.sync.get(['streaming'], ({ streaming }) => {
-      // IF the stream is disconnected unintentionally then reconnect
       if (streaming) {
         ws = connect(webSocketURL);
         console.log('WebSocket reconnecting...');
         return;
       }
-      // IF video is playing when streaming is stopped then pause the video
-      if (!video.paused && !video.ended) video.pause();
-      // updates streaming state, so extension Popup menu UI updates accordingly
       chrome.runtime.sendMessage({
         action: ACTIONS.STREAMING_STATE_UPDATED,
         streaming,
@@ -145,147 +89,65 @@ function connect(webSocketURL: string): WebSocket {
 }
 
 /**
- * Function which closes the websocket and updates state accordingly
+ * Function to stop the WebSocket connection and content capture.
  */
 function disconnect(): void {
-  if (removeOverlay) overlay.remove();
-  if (!ws) chrome.storage.sync.set({ streaming: false });
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  // update streaming state before closing WebSocket, so it doesn't try to reconnect
-  chrome.storage.sync.set({ streaming: false });
-  ws.close(1000, 'video stopped');
-  // reset values for next stream
-  latestFrame = 0;
-  frameCount = -1;
-}
-
-/**
- * Function which recursively draws each video frame to be converted to an image/png Blob, base64 encoded,
- * and sent in the message body through the socket. The overlay border is also drawn to indicate which
- * video on the webpage is being processed.
- */
-function captureAndSendFrames(): void {
-  frameCount++;
-  if (video.paused || video.ended) return;
-  // only capture frames at a specified rate (in this implementation we capture every 60 frames)
-  if (frameCount % frameCaptureRate === 0) {
-    canvas.width = video.offsetWidth;
-    canvas.height = video.offsetHeight;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    canvas.toBlob(toBlobCallback, 'image/png', 0.9);
+  if (contentInterval) {
+    clearInterval(contentInterval);
   }
-  // recursively called to continually capture frames
-  requestAnimationFrame(captureAndSendFrames);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.close(1000, 'Streaming stopped');
+  }
+  chrome.storage.sync.set({ streaming: false });
 }
 
 /**
- * Function which takes a Blob and triggers building the message and sending it IF the WebSocket is open.
+ * Function which captures content from the page at regular intervals and sends it to the API.
  */
-function toBlobCallback(blob: Blob): void {
+function captureAndSendContent(): void {
+  contentInterval = window.setInterval(() => {
+    const content = extractContentFromPage();
+
+    // Avoid sending duplicate content
+    if (content && content !== latestContent) {
+      latestContent = content;
+      createAndSendMessage(content);
+    }
+  }, contentCaptureRate);
+}
+
+/**
+ * Function to extract content from the page.
+ * Customize this function based on the content you need.
+ */
+function extractContentFromPage(): string {
+  // Example: Extract text from all paragraphs
+  const paragraphs = document.querySelectorAll('p');
+  let textContent = '';
+  paragraphs.forEach((p) => {
+    textContent += p.innerText + ' ';
+  });
+  return textContent.trim();
+}
+
+/**
+ * Function to create and send a message through the WebSocket.
+ */
+function createAndSendMessage(content: string): void {
   if (ws.readyState !== WebSocket.OPEN) return;
-  createAndSendMessage(blob, frameCount);
-}
 
-/**
- * Function which takes a Blob, base64 encodes it, and builds the message to send through the
- * WebSocket.
- *
- * For more information on structuring request bodies see our Streaming API docs:
- * `https://streaming.hume.ai/doc/streaming-api/operation/operation-publish-models`
- *
- * @param blob An `image/png` Blob to be base64 encoded and added to the body of the message
- * @param frame A reference to the current drawn frame passed in as the payload_id. This value
- * is later used when processing the response to ensure each response is handled in order
- * (chronologically)
- */
-async function createAndSendMessage(blob: Blob, frame: number): Promise<void> {
-  const data = await blobToBase64(blob);
-  // specifies Face Model only, as we are processing images (the captured video frames)
-  const models = { face: {} };
-  // payload_id is included in the response— used as reference to ensure responses are handled in order
-  const payload_id = `${frame}`;
+  // Build the message according to the API's expected format
+  const message = JSON.stringify({
+    text: content,
+    models: { language: { granularity: 'sentence' } },
+    // Include a unique payload_id if necessary
+  });
 
-  const message = JSON.stringify({ data, models, payload_id });
   ws.send(message);
 }
 
 /**
- * Function which takes a Blob, converts it to a file, and base64 encodes it.
- */
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve: (value: string) => void, _) => {
-    const reader = new FileReader();
-
-    reader.onloadend = () => {
-      if (!reader.result) return;
-
-      const result = reader.result as string;
-      resolve(result.split(',')[1]);
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-/**
- * Function which first resets the dimensions of the overlay, and then extracts the bounding box coordinates
- * from the streaming API message response body and draws the bounding box in the overlay canvas to indicate
- * which face the top five expressions in the popup menu correspond to.
- *
- * IF no predictions are present in the response, a bounding box is not drawn (face not detected)
- */
-function drawBoundingBox(res: MessageResponseBody): void {
-  overlay.width = video.offsetWidth;
-  overlay.height = video.offsetHeight;
-
-  if (!res.face.predictions) return;
-  const { bbox } = res.face.predictions[0];
-
-  const borerColor = 'red';
-  const borderWidth = 3;
-
-  const x = bbox.x + bbox.w / 2;
-  const y = bbox.y + bbox.h / 2;
-  const radiusX = bbox.w / 2;
-  const radiusY = bbox.h / 2;
-  const rotation = 0;
-  const startAngle = 0;
-  const endAngle = 2 * Math.PI;
-
-  overlayCtx.strokeStyle = borerColor;
-  overlayCtx.lineWidth = borderWidth;
-  overlayCtx.ellipse(x, y, radiusX, radiusY, rotation, startAngle, endAngle);
-  overlayCtx.stroke();
-}
-
-/**
- * Function which extracts the top five expressions from the streaming API message response body. The top
- * five expressions are the expressions with the highest scores— indicating Hume's Model determined the
- * signals for those expressions were of the highest intensity relative to others for a given expression.
- *
- * If no predictions are present in the response body, an empty array is returned to indicate for the
- * extension's Popup menu that there are no predictions (face not detected).
- *
- * For information on interpreting outputs see our documentation:
- *  - https://intercom.help/hume-ai/en/articles/8062849-how-do-i-interpret-my-results
- *  - https://intercom.help/hume-ai/en/articles/8062903-what-can-i-do-with-my-outputs
- */
-function extractTopFiveExpressions(res: MessageResponseBody): EmotionScore[] {
-  if (!res.face.predictions) return [];
-  const { emotions } = res.face.predictions[0];
-  const topFiveExpressions = emotions
-    .sort((a, b) => {
-      if (a.score > b.score) return -1;
-      if (a.score < b.score) return 1;
-      return 0;
-    })
-    .slice(0, 5);
-  return topFiveExpressions;
-}
-
-/**
- * Function which displays an alert on the webpage with the specified error message
+ * Function to display an error message to the user.
  */
 function displayError(error: keyof typeof ERRORS): void {
   alert(`Hume Extension Error: ${ERRORS[error]}`);

@@ -7,7 +7,7 @@ import AuthenticatedMenu from './components/authenticated-menu';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
 import Divider from '@mui/material/Divider';
-import { HumeLogoLink } from '../shared/components';
+import { LogoLink } from '../shared/components';
 import UnauthenticatedMenu from './components/unauthenticated-menu';
 
 const Popup: React.FC<{}> = () => {
@@ -24,7 +24,7 @@ const Popup: React.FC<{}> = () => {
   return (
     <Card sx={STYLES.cardStyles}>
       <CardContent sx={STYLES.cardContentStyles}>
-        <HumeLogoLink />
+        <LogoLink />
         <Divider sx={{ marginTop: '12px' }} />
         {!authenticated ? <UnauthenticatedMenu /> : <AuthenticatedMenu />}
       </CardContent>

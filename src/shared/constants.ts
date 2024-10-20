@@ -8,9 +8,10 @@ export const ACTIONS = {
 };
 
 export const ERRORS = {
-  NO_VIDEO_FOUND: 'no video element found.',
-  STREAMING_IN_PROGRESS: 'streaming already in progress',
-};
+  NO_VIDEO_FOUND: 'No video found on the page.',
+  STREAMING_IN_PROGRESS: 'Streaming is already in progress.',
+  WEBCAM_ACCESS_DENIED: 'Unable to access webcam. Please grant permission in your browser settings and try again.',
+} as const;
 
 export const COLORS = {
   Admiration: '#FFC58F',
@@ -66,22 +67,22 @@ export const COLORS = {
 // Custom styles for Material UI components
 export const STYLES = {
   cardStyles: {
-    backgroundColor: '#FFF4E8',
+    backgroundColor: '#FFFFFF',
   },
   cardContentStyles: {
-    height: '332px',
+    height: '600px',
     padding: '20px',
   },
   customCTABtnStyles: {
     width: '140px',
-    color: '#FFF4E8',
+    color: '#FFFFFF',
     backgroundColor: '#353535',
     textTransform: 'none',
     borderRadius: '20px',
     borderColor: '#353535',
     '&:hover': {
       color: '#353535',
-      backgroundColor: '#FFF4E8',
+      backgroundColor: '#FFFFFF',
       borderColor: '#353535',
     },
   },

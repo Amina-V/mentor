@@ -9,10 +9,8 @@ import { ACTIONS } from '../shared/constants';
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'popup') return;
   port.onDisconnect.addListener(() => {
-    const options = { active: true, lastFocusedWindow: true };
-    chrome.tabs.query(options, ([tab]) => {
-      const msg = { action: ACTIONS.DISCONNECT, removeOverlay: true };
-      chrome.tabs.sendMessage(tab.id, msg);
-    });
+    // Perform any necessary cleanup here
+    chrome.storage.sync.set({ streaming: false });
+    console.log('Popup closed, streaming stopped');
   });
 });

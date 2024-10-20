@@ -6,7 +6,7 @@ import './options.css';
 import Button from '@mui/material/Button';
 import FormControl from '@mui/material/FormControl';
 import GetAPIKeyLink from './components/get-api-key-link';
-import { HumeLogoLink } from '../shared/components';
+import { LogoLink } from '../shared/components';
 import IconButton from '@mui/material/IconButton';
 import InputAdornment from '@mui/material/InputAdornment';
 import InputLabel from '@mui/material/InputLabel';
@@ -44,7 +44,7 @@ const Options: React.FC<{}> = () => {
 
   return (
     <div className='options-content'>
-      <HumeLogoLink />
+      <LogoLink />
       <FormControl
         sx={{ m: 3, width: '420px' }}
         size='small'

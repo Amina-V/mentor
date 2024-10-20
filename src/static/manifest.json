@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Hume Extension",
-  "description": "Chrome extension for Hume AI Developer Platform",
+  "name": "Mentor Extension",
+  "description": "Mentor Chrome extension",
   "version": "0.0.1",
   "icons": {
     "16": "icon.png",
@@ -9,7 +9,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Hume Extension",
+    "default_title": "Mentor Extension",
     "default_icon": "icon.png"
   },
   "options_page": "options.html",
@@ -22,5 +22,7 @@
       "js": ["content-script.js"]
     }
   ],
-  "permissions": ["activeTab", "storage"]
+  "permissions": [
+    "activeTab",
+    "storage"  ]
 }
