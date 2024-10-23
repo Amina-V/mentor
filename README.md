@@ -2,7 +2,7 @@
 
 ## Summary
 
-This Chrome extension is part of my master's Human-Computer Interaction(HCI) research. The goal is to create an empathetic AI mentor plug-in that works alongside users as they complete professional upskilling courses. 
+This Chrome extension is part of my master's research in Human-Computer Interaction(HCI). The goal is to create an empathetic AI mentor plug-in that works alongside users as they complete professional upskilling courses. 
 
  Will implement an EVI (emotional voice interface) based on Hume AI's tools and a chat assistant with GPT-4o.
 
@@ -14,3 +14,4 @@ In progress!
 - [ ] Q&A
 
 Usability testing for this project's UI will be conducted in Figma before being implemented in the plug-in.
+Thank you, Zachary Greathouse(@zgreathouse) from Hume.AI, for publishing the original extension repo!
