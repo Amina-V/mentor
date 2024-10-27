@@ -24,5 +24,13 @@
   ],
   "permissions": [
     "activeTab",
-    "storage"  ]
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://voice-widget.hume.ai/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src https://voice-widget.hume.ai"
+  }
 }

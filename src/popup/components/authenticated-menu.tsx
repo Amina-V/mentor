@@ -1,11 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { ACTIONS, COLORS, STYLES } from '../../shared/constants';
 import './authenticated-menu.css';
-// components
 import Button from '@mui/material/Button';
-import Link from '@mui/material/Link';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
+import { EmbeddedVoice } from '../lib/EmbeddedVoice';
 
 const AuthenticatedMenu: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -15,6 +14,8 @@ const AuthenticatedMenu: React.FC = () => {
   const apiKeyRef = useRef<string>('');
   const [topFive, setTopFive] = useState<any[]>([]);
   const intervalIdRef = useRef<number | null>(null);
+  const [isEmbedOpen, setIsEmbedOpen] = useState(false);
+  const [voiceConfig, setVoiceConfig] = useState<any>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -22,6 +23,20 @@ const AuthenticatedMenu: React.FC = () => {
     chrome.storage.sync.get(['apiKey'], (results) => {
       if (results.apiKey) {
         apiKeyRef.current = results.apiKey;
+        // Set up voice config when API key is available
+        setVoiceConfig({
+          auth: { 
+            type: 'apiKey', 
+            value: results.apiKey 
+          },
+          hostname: 'voice-widget.hume.ai',
+          config: {
+            streaming: {
+              language: 'en',
+              interim_results: true
+            }
+          }
+        });
       } else {
         alert('API key not found. Please set your API key in the extension settings.');
       }
@@ -32,61 +47,6 @@ const AuthenticatedMenu: React.FC = () => {
       stopStreaming();
     };
   }, []);
-
-  const startStreaming = async () => {
-    if (!isMounted) {
-      console.error('Component not yet mounted');
-      return;
-    }
-
-    try {
-      console.log('Requesting webcam access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      console.log('Webcam access granted.');
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        console.log('Stream set to video element.');
-
-        videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded.');
-          videoRef.current?.play().then(() => {
-            console.log('Video playback started.');
-            setStreaming(true);
-            connectWebSocket();
-          }).catch(error => {
-            console.error('Error starting video playback:', error);
-          });
-        };
-      } else {
-        console.error('Video element reference is null.');
-      }
-    } catch (error) {
-      console.error('Error starting stream:', error);
-      alert('Error accessing webcam: ' + error.message);
-    }
-  };
-
-  const stopStreaming = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
-    }
-
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    if (intervalIdRef.current !== null) {
-      clearInterval(intervalIdRef.current);
-      intervalIdRef.current = null;
-    }
-
-    setStreaming(false);
-    setTopFive([]);
-  };
 
   const connectWebSocket = () => {
     if (!apiKeyRef.current) {
@@ -101,17 +61,20 @@ const AuthenticatedMenu: React.FC = () => {
     ws.onopen = () => {
       console.log('WebSocket connection established.');
       console.log("Streaming:", streaming);
-      captureFrames(); // Start capturing frames when WebSocket is open
+      captureFrames();
     };
 
     ws.onmessage = (event) => {
       console.log('Received message from Hume API:', event.data);
-      const data = JSON.parse(event.data);
-      console.log('Parsed data:', data);
-
-      const topExpressions = extractTopFiveExpressions(data);
-      console.log('Extracted top expressions:', topExpressions);
-      setTopFive(topExpressions);
+      try {
+        const data = JSON.parse(event.data);
+        console.log('Parsed data:', data);
+        const topExpressions = extractTopFiveExpressions(data);
+        console.log('Extracted top expressions:', topExpressions);
+        setTopFive(topExpressions);
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
     };
 
     ws.onerror = (error) => {
@@ -132,19 +95,18 @@ const AuthenticatedMenu: React.FC = () => {
       console.error('WebSocket is not ready.');
       return;
     }
+
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
     const captureAndSend = () => {
-      console.log('Capturing frame...');
-
       if (!videoRef.current || !ctx || !wsRef.current) return;
 
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
 
       if (canvas.width === 0 || canvas.height === 0) {
-        console.error('Video dimensions not ready.', canvas);
+        console.error('Video dimensions not ready.');
         return;
       }
 
@@ -159,13 +121,13 @@ const AuthenticatedMenu: React.FC = () => {
           models: { face: {} },
           payload_id: `${Date.now()}`,
         });
+        
         console.log('Sending frame to Hume API');
         wsRef.current.send(message);
       }, 'image/jpeg', 0.8);
     };
 
-    console.log('Starting frame capture interval...');
-    intervalIdRef.current = window.setInterval(captureAndSend, 1000 / 2); // 2 fps
+    intervalIdRef.current = window.setInterval(captureAndSend, 7500);
   };
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -192,8 +154,61 @@ const AuthenticatedMenu: React.FC = () => {
     }
 
     return emotions
-      .sort((a, b) => b.score - a.score)
+      .sort((a: any, b: any) => b.score - a.score)
       .slice(0, 5);
+  };
+
+  const startStreaming = async () => {
+    if (!isMounted) {
+      console.error('Component not mounted');
+      return;
+    }
+
+    try {
+      console.log('Requesting webcam and microphone access...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      });
+      
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current?.play().then(() => {
+            setStreaming(true);
+            setIsEmbedOpen(true);
+            connectWebSocket();
+          }).catch(error => {
+            console.error('Error starting video playback:', error);
+          });
+        };
+      }
+    } catch (error) {
+      console.error('Error starting stream:', error);
+      alert('Error accessing webcam/microphone: ' + (error as Error).message);
+    }
+  };
+
+  const stopStreaming = () => {
+    if (videoRef.current?.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    if (intervalIdRef.current) {
+      clearInterval(intervalIdRef.current);
+      intervalIdRef.current = null;
+    }
+
+    setStreaming(false);
+    setIsEmbedOpen(false);
+    setTopFive([]);
   };
 
   return (
@@ -226,6 +241,21 @@ const AuthenticatedMenu: React.FC = () => {
       >
         {streaming ? 'Stop' : 'Start'}
       </Button>
+      
+      {streaming && voiceConfig && (
+        <EmbeddedVoice
+          {...voiceConfig}
+          onMessage={(msg: unknown) => {
+            console.log('Voice message received:', msg);
+          }}
+          onClose={() => {
+            console.log('Voice embed closed');
+            setIsEmbedOpen(false);
+          }}
+          isEmbedOpen={isEmbedOpen}
+          openOnMount={true}
+        />
+      )}
 
       {topFive.length > 0 && (
         <Box>
@@ -252,6 +282,5 @@ const AuthenticatedMenu: React.FC = () => {
     </Box>
   );
 };
-
 
 export default AuthenticatedMenu;

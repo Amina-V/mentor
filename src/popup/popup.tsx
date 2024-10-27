@@ -10,7 +10,7 @@ import Divider from '@mui/material/Divider';
 import { LogoLink } from '../shared/components';
 import UnauthenticatedMenu from './components/unauthenticated-menu';
 
-const Popup: React.FC<{}> = () => {
+const Popup: React.FC = () => {
   useEffect(() => {
     // opens port to enable listening for when Popup is closed (see background.js script)
     chrome.runtime.connect({ name: 'popup' });
@@ -36,3 +36,5 @@ const root = document.createElement('div');
 root.setAttribute('class', 'popup-container');
 document.body.appendChild(root);
 render(<Popup />, root);
+
+export default Popup;
