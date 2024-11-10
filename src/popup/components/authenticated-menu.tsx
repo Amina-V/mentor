@@ -1,21 +1,45 @@
+// src/components/authenticated-menu.tsx
 import React, { useEffect, useState, useRef } from 'react';
 import { ACTIONS, COLORS, STYLES } from '../../shared/constants';
 import './authenticated-menu.css';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
-import { EmbeddedVoice } from '../lib/EmbeddedVoice';
+import IconButton from '@mui/material/IconButton';
+import MicIcon from '@mui/icons-material/Mic';
+import MicOffIcon from '@mui/icons-material/MicOff';
+import { keyframes } from '@emotion/react';
+import HumeServices from '../../../src/hume-services';
+
+interface EmotionData {
+  name: string;
+  score: number;
+}
+
+const pulseAnimation = keyframes`
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
+  }
+`;
 
 const AuthenticatedMenu: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [streaming, setStreaming] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
+  const humeServiceRef = useRef<HumeServices | null>(null);
   const apiKeyRef = useRef<string>('');
-  const [topFive, setTopFive] = useState<any[]>([]);
-  const intervalIdRef = useRef<number | null>(null);
-  const [isEmbedOpen, setIsEmbedOpen] = useState(false);
-  const [voiceConfig, setVoiceConfig] = useState<any>(null);
+  const [topFive, setTopFive] = useState<EmotionData[]>([]);
+  const frameIntervalRef = useRef<number | null>(null);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceResponse, setVoiceResponse] = useState<string>('');
+  const [recordingTime, setRecordingTime] = useState(0);
+  const recordingInterval = useRef<number | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -23,20 +47,6 @@ const AuthenticatedMenu: React.FC = () => {
     chrome.storage.sync.get(['apiKey'], (results) => {
       if (results.apiKey) {
         apiKeyRef.current = results.apiKey;
-        // Set up voice config when API key is available
-        setVoiceConfig({
-          auth: { 
-            type: 'apiKey', 
-            value: results.apiKey 
-          },
-          hostname: 'voice-widget.hume.ai',
-          config: {
-            streaming: {
-              language: 'en',
-              interim_results: true
-            }
-          }
-        });
       } else {
         alert('API key not found. Please set your API key in the extension settings.');
       }
@@ -48,114 +58,31 @@ const AuthenticatedMenu: React.FC = () => {
     };
   }, []);
 
-  const connectWebSocket = () => {
-    if (!apiKeyRef.current) {
-      console.error('API key is not set.');
-      alert('API key is not set. Please set your API key in the extension settings.');
-      return;
+  useEffect(() => {
+    if (voiceActive) {
+      setRecordingTime(0);
+      recordingInterval.current = window.setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (recordingInterval.current) {
+        clearInterval(recordingInterval.current);
+        recordingInterval.current = null;
+      }
+      setRecordingTime(0);
     }
 
-    const wsURL = `wss://api.hume.ai/v0/stream/models?apikey=${apiKeyRef.current}`;
-    const ws = new WebSocket(wsURL);
-
-    ws.onopen = () => {
-      console.log('WebSocket connection established.');
-      console.log("Streaming:", streaming);
-      captureFrames();
-    };
-
-    ws.onmessage = (event) => {
-      console.log('Received message from Hume API:', event.data);
-      try {
-        const data = JSON.parse(event.data);
-        console.log('Parsed data:', data);
-        const topExpressions = extractTopFiveExpressions(data);
-        console.log('Extracted top expressions:', topExpressions);
-        setTopFive(topExpressions);
-      } catch (error) {
-        console.error('Error processing WebSocket message:', error);
+    return () => {
+      if (recordingInterval.current) {
+        clearInterval(recordingInterval.current);
       }
     };
+  }, [voiceActive]);
 
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed.');
-    };
-
-    wsRef.current = ws;
-  };
-
-  const captureFrames = () => {
-    console.log('Starting frame capture...');
-
-    if (!wsRef.current) {
-      console.error('WebSocket is not ready.');
-      return;
-    }
-
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    const captureAndSend = () => {
-      if (!videoRef.current || !ctx || !wsRef.current) return;
-
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-
-      if (canvas.width === 0 || canvas.height === 0) {
-        console.error('Video dimensions not ready.');
-        return;
-      }
-
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob(async (blob) => {
-        if (!blob || !wsRef.current) return;
-
-        const base64Data = await blobToBase64(blob);
-        const message = JSON.stringify({
-          data: base64Data.split(',')[1],
-          models: { face: {} },
-          payload_id: `${Date.now()}`,
-        });
-        
-        console.log('Sending frame to Hume API');
-        wsRef.current.send(message);
-      }, 'image/jpeg', 0.8);
-    };
-
-    intervalIdRef.current = window.setInterval(captureAndSend, 7500);
-  };
-
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  const extractTopFiveExpressions = (res: any): any[] => {
-    console.log('Extracting top five expressions from response:', res);
-
-    if (!res.face || !res.face.predictions || res.face.predictions.length === 0) {
-      console.warn('No face predictions found in the response.');
-      return [];
-    }
-
-    const emotions = res.face.predictions[0].emotions;
-    if (!emotions || emotions.length === 0) {
-      console.warn('No emotions found in the face prediction.');
-      return [];
-    }
-
-    return emotions
-      .sort((a: any, b: any) => b.score - a.score)
-      .slice(0, 5);
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   const startStreaming = async () => {
@@ -173,19 +100,96 @@ const AuthenticatedMenu: React.FC = () => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current?.play().then(() => {
+        videoRef.current.onloadedmetadata = async () => {
+          try {
+            await videoRef.current?.play();
             setStreaming(true);
-            setIsEmbedOpen(true);
-            connectWebSocket();
-          }).catch(error => {
-            console.error('Error starting video playback:', error);
-          });
+
+            // Initialize and connect Hume service
+            humeServiceRef.current = new HumeServices(apiKeyRef.current);
+            
+            // Connect WebSocket for emotions
+            await humeServiceRef.current.connectEmotions((emotionData) => {
+              console.log('Emotion data received:', emotionData);
+              setTopFive(emotionData);
+            });
+
+            // Connect WebSocket for voice
+            await humeServiceRef.current.connectVoice();
+            
+            // Set up voice transcript callback
+            humeServiceRef.current.setTranscriptCallback((transcript) => {
+              console.log('Voice transcript received:', transcript);
+              setVoiceResponse(transcript);
+            });
+
+            // Start frame capture for emotion detection
+            startFrameCapture();
+
+          } catch (error) {
+            console.error('Error starting services:', error);
+            stopStreaming();
+          }
         };
       }
     } catch (error) {
       console.error('Error starting stream:', error);
       alert('Error accessing webcam/microphone: ' + (error as Error).message);
+    }
+  };
+
+  const startFrameCapture = () => {
+    if (!videoRef.current || !humeServiceRef.current) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    frameIntervalRef.current = window.setInterval(async () => {
+      if (!videoRef.current || !ctx || !humeServiceRef.current) return;
+
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+
+      if (canvas.width === 0 || canvas.height === 0) {
+        console.error('Video dimensions not ready.');
+        return;
+      }
+
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(async (blob) => {
+        if (!blob || !humeServiceRef.current) return;
+        const base64Frame = await humeServiceRef.current.convertBlobToBase64(blob);
+        humeServiceRef.current.sendFrame(base64Frame);
+      }, 'image/jpeg', 0.8);
+    }, 7500);
+  };
+
+  const toggleVoice = async () => {
+    if (!humeServiceRef.current) return;
+
+    try {
+      if (!voiceActive) {
+        await humeServiceRef.current.startVoiceCapture();
+        setVoiceActive(true);
+        // Show start recording feedback
+        const startMessage = "Started voice recording";
+        setVoiceResponse(prevResponse => 
+          `${startMessage}\n${prevResponse ? '---\n' + prevResponse : ''}`
+        );
+      } else {
+        humeServiceRef.current.stopVoiceCapture();
+        setVoiceActive(false);
+        // Show stop recording feedback
+        const stopMessage = "Stopped voice recording";
+        setVoiceResponse(prevResponse => 
+          `${stopMessage}\n${prevResponse ? '---\n' + prevResponse : ''}`
+        );
+      }
+    } catch (error) {
+      console.error('Error toggling voice:', error);
+      setVoiceActive(false);
+      setVoiceResponse('Error with voice recording: ' + (error as Error).message);
     }
   };
 
@@ -196,19 +200,20 @@ const AuthenticatedMenu: React.FC = () => {
       videoRef.current.srcObject = null;
     }
 
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    if (frameIntervalRef.current) {
+      clearInterval(frameIntervalRef.current);
+      frameIntervalRef.current = null;
     }
 
-    if (intervalIdRef.current) {
-      clearInterval(intervalIdRef.current);
-      intervalIdRef.current = null;
+    if (humeServiceRef.current) {
+      humeServiceRef.current.cleanup();
+      humeServiceRef.current = null;
     }
 
     setStreaming(false);
-    setIsEmbedOpen(false);
+    setVoiceActive(false);
     setTopFive([]);
+    setVoiceResponse('');
   };
 
   return (
@@ -232,31 +237,87 @@ const AuthenticatedMenu: React.FC = () => {
         muted
       />
 
-      <Button
-        size='large'
-        variant='outlined'
-        aria-label={streaming ? 'Stop streaming' : 'Start streaming'}
-        sx={{ ...STYLES.customCTABtnStyles, marginBottom: 2 }}
-        onClick={streaming ? stopStreaming : startStreaming}
-      >
-        {streaming ? 'Stop' : 'Start'}
-      </Button>
-      
-      {streaming && voiceConfig && (
-        <EmbeddedVoice
-          {...voiceConfig}
-          onMessage={(msg: unknown) => {
-            console.log('Voice message received:', msg);
-          }}
-          onClose={() => {
-            console.log('Voice embed closed');
-            setIsEmbedOpen(false);
-          }}
-          isEmbedOpen={isEmbedOpen}
-          openOnMount={true}
-        />
+      <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mb: 2 }}>
+        <Button
+          size='large'
+          variant='outlined'
+          aria-label={streaming ? 'Stop streaming' : 'Start streaming'}
+          sx={STYLES.customCTABtnStyles}
+          onClick={streaming ? stopStreaming : startStreaming}
+        >
+          {streaming ? 'Stop' : 'Start'}
+        </Button>
+
+        {streaming && (
+          <IconButton 
+            aria-label={voiceActive ? 'Stop voice recording' : 'Start voice recording'}
+            onClick={toggleVoice}
+            sx={{
+              color: voiceActive ? '#f44336' : '#4caf50',
+              border: '1px solid currentColor',
+              backgroundColor: voiceActive ? 'rgba(244, 67, 54, 0.1)' : 'transparent',
+              animation: voiceActive ? `${pulseAnimation} 2s infinite` : 'none',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                backgroundColor: voiceActive 
+                  ? 'rgba(244, 67, 54, 0.2)' 
+                  : 'rgba(76, 175, 80, 0.1)'
+              },
+              position: 'relative',
+              '&::after': voiceActive ? {
+                content: '""',
+                position: 'absolute',
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: '#f44336',
+                top: '5px',
+                right: '5px'
+              } : {}
+            }}
+          >
+            {voiceActive ? (
+              <>
+                <MicOffIcon />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    position: 'absolute',
+                    bottom: '-25px',
+                    fontSize: '0.75rem',
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  Recording... {formatTime(recordingTime)}
+                </Typography>
+              </>
+            ) : (
+              <MicIcon />
+            )}
+          </IconButton>
+        )}
+      </Box>
+
+      {/* Voice Response Display */}
+      {voiceResponse && (
+        <Box sx={{ 
+          mb: 2, 
+          p: 2, 
+          bgcolor: 'rgba(0, 0, 0, 0.04)', 
+          borderRadius: 1,
+          maxHeight: '100px',
+          overflowY: 'auto'
+        }}>
+          <Typography variant='body2' color="text.secondary">
+            Voice Response:
+          </Typography>
+          <Typography variant='body1'>
+            {voiceResponse}
+          </Typography>
+        </Box>
       )}
 
+      {/* Emotions Display */}
       {topFive.length > 0 && (
         <Box>
           <Typography variant='body1'>Top 5 Expressions</Typography>

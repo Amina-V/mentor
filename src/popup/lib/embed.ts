@@ -1,4 +1,4 @@
-import type { Hume } from 'hume';
+import { Hume, HumeClient } from 'hume';
 
 import type { ClientToFrameAction, SocketConfig } from './embed-messages';
 import {
@@ -237,7 +237,7 @@ export class EmbeddedVoice {
     console.log('Sending message to frame:', action);
     console.log('Frame origin:', new URL(frame.src).origin);
     // frame.contentWindow.postMessage(action, new URL(frame.src).origin);
-    frame.contentWindow.postMessage(action, '*');
+    frame.contentWindow.postMessage(action, '*'); // TODO: Decide what this should be...
   }
 
   private showIframe() {

@@ -24,13 +24,13 @@
   ],
   "permissions": [
     "activeTab",
-    "storage"
+    "storage",
+    "microphone"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "https://voice-widget.hume.ai/*"
+    "https://api.hume.ai/*"
   ],
-  "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; frame-src https://voice-widget.hume.ai"
-  }
+    "content_security_policy": {
+      "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+    }
 }
