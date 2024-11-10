@@ -32,7 +32,7 @@ class HumeServices {
   constructor(apiKey: string) {
     this.CONFIG_ID = '9b9e0037-48aa-45d0-867a-d7b87d88be24';
     this.API_KEY = apiKey;
-    this.SECRET_KEY = 'KqdFn07jjhrAiaePYBAVtZ2M2wkvTluGoV0KCr7TrbE3G47k6paYm3CsAUMFC4AG';
+    this.SECRET_KEY = 'secret_key';
     
     this.client = new HumeClient({
       apiKey: this.API_KEY,
