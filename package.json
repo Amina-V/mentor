@@ -10,13 +10,18 @@
   "author": "Zachary Greathouse",
   "license": "UNLICENSED",
   "dependencies": {
-    "@emotion/react": "^11.11.1",
-    "@emotion/styled": "^11.11.0",
-    "@mui/icons-material": "^5.14.3",
-    "@mui/material": "^5.14.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-use": "^17.4.0"
+    "@emotion/react": "^11.13.3",
+    "@emotion/styled": "^11.13.0",
+    "@humeai/voice": "^0.1.10",
+    "@humeai/voice-embed": "^0.1.18",
+    "@humeai/voice-react": "^0.1.18",
+    "@mui/icons-material": "^6.1.6",
+    "@mui/material": "^6.1.6",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "dotenv": "^16.4.5",
+    "hume": "^0.9.6",
+    "typescript": "^4.4.2"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.242",

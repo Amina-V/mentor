@@ -1,3 +1,4 @@
+// popup.tsx
 import React, { useEffect, useState } from 'react';
 import { render } from 'react-dom';
 import { STYLES } from '../shared/constants';
@@ -10,16 +11,26 @@ import Divider from '@mui/material/Divider';
 import { LogoLink } from '../shared/components';
 import UnauthenticatedMenu from './components/unauthenticated-menu';
 
-const Popup: React.FC<{}> = () => {
+const Popup: React.FC = () => {
+  const [authenticated, setAuthenticated] = useState(false);
+
   useEffect(() => {
     // opens port to enable listening for when Popup is closed (see background.js script)
     chrome.runtime.connect({ name: 'popup' });
     chrome.storage.sync.get(['apiKey'], ({ apiKey }) => {
       setAuthenticated(!!apiKey);
     });
-  }, []);
 
-  const [authenticated, setAuthenticated] = useState(false);
+    // Request microphone access
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then((stream) => {
+        console.log("Microphone access granted!");
+        // You can handle the audio stream here if needed
+      })
+      .catch((error) => {
+        console.error("Error accessing microphone:", error);
+      });
+  }, []);
 
   return (
     <Card sx={STYLES.cardStyles}>
