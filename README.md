@@ -1,4 +1,4 @@
-# Senpai - Empathetic AI Mentor Chrome Extension [WIP]
+# Senpai - Empathetic AI Mentor Chrome Extension 
 
 ## Summary
 
